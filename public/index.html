@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Carbon Ledger</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            background-color: #f4f7f9;
+            color: #333;
+            margin: 0;
+            padding: 20px;
+        }
+        h1, h2 {
+            color: #1a253c;
+        }
+        #app {
+            max-width: 800px;
+            margin: 0 auto;
+            background-color: #fff;
+            padding: 20px 30px;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+        }
+        form {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+            margin-bottom: 30px;
+        }
+        input {
+            padding: 10px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            font-size: 16px;
+        }
+        button {
+            padding: 12px;
+            background-color: #007bff;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            font-size: 16px;
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        #recordsList {
+            list-style: none;
+            padding: 0;
+        }
+        #recordsList li {
+            background-color: #f9f9f9;
+            padding: 15px;
+            border: 1px solid #eee;
+            border-radius: 4px;
+            margin-bottom: 10px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .status-created { color: green; }
+        .status-retired { color: red; }
+        
+        /* Style for the new Retire button */
+        .retire-btn {
+            background-color: #dc3545;
+            padding: 8px 12px;
+            font-size: 14px;
+        }
+        .retire-btn:hover {
+            background-color: #c82333;
+        }
+    </style>
+</head>
+<body>
+    <div id="app">
+        <h1>Carbon Credit Ledger</h1>
+        
+        <h2>Create a New Credit</h2>
+        <form id="createRecordForm">
+            <input type="text" id="project_name" placeholder="Project Name" required>
+            <input type="text" id="registry" placeholder="Registry (e.g., Verra)" required>
+            <input type="number" id="vintage" placeholder="Vintage Year" required>
+            <input type="number" id="quantity" placeholder="Quantity" required>
+            <button type="submit">Create Credit</button>
+        </form>
+
+        <h2>Existing Credits</h2>
+        <ul id="recordsList">
+            </ul>
+    </div>
+
+    <script>
+        const API_URL = '/api';
+        const createForm = document.getElementById('createRecordForm');
+        const recordsList = document.getElementById('recordsList');
+
+        // Function to fetch all records and display them
+        async function fetchRecords() {
+            try {
+                const response = await fetch(`${API_URL}/records`);
+                const records = await response.json();
+                
+                recordsList.innerHTML = ''; 
+
+                records.forEach(record => {
+                    const isRetired = record.events.some(event => event.type === 'retired');
+                    
+                    const listItem = document.createElement('li');
+                    
+                    // --- MODIFIED BLOCK ---
+                    // We now dynamically create the content, including the button
+                    let statusHtml;
+                    if (isRetired) {
+                        statusHtml = `<strong class="status-retired">Retired</strong>`;
+                    } else {
+                        statusHtml = `<button class="retire-btn" data-id="${record._id}">Retire</button>`;
+                    }
+                    
+                    listItem.innerHTML = `
+                        <div>
+                            <strong>${record.project_name}</strong> (${record.quantity})
+                            <br>
+                            <small>ID: ${record._id.substring(0, 12)}...</small>
+                        </div>
+                        ${statusHtml} 
+                    `;
+                    // --- END MODIFIED BLOCK ---
+                    
+                    recordsList.appendChild(listItem);
+                });
+            } catch (error) {
+                console.error('Error fetching records:', error);
+                recordsList.innerHTML = '<li>Failed to load records.</li>';
+            }
+        }
+
+        // --- NEW CODE BLOCK ---
+        // Listen for clicks on the entire list
+        recordsList.addEventListener('click', async (event) => {
+            // Check if the clicked element is a retire button
+            if (event.target.classList.contains('retire-btn')) {
+                const recordId = event.target.dataset.id;
+                
+                if (confirm('Are you sure you want to retire this credit?')) {
+                    try {
+                        const response = await fetch(`${API_URL}/records/${recordId}/retire`, {
+                            method: 'POST'
+                        });
+
+                        if (!response.ok) {
+                            const errorData = await response.json();
+                            throw new Error(errorData.error || 'Failed to retire credit');
+                        }
+
+                        alert('Credit retired successfully!');
+                        fetchRecords(); // Refresh the list to show the change
+                    } catch (error) {
+                        console.error('Retirement Error:', error);
+                        alert(`Error: ${error.message}`);
+                    }
+                }
+            }
+        });
+        // --- END NEW CODE BLOCK ---
+
+        // Function to handle form submission (no changes here)
+        createForm.addEventListener('submit', async (event) => {
+            event.preventDefault(); 
+
+            const project_name = document.getElementById('project_name').value;
+            const registry = document.getElementById('registry').value;
+            const vintage = document.getElementById('vintage').value;
+            const quantity = document.getElementById('quantity').value;
+
+            try {
+                const response = await fetch(`${API_URL}/records`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ project_name, registry, vintage, quantity }),
+                });
+
+                if (!response.ok) throw new Error('Failed to create record');
+                
+                alert('Record created successfully!');
+                createForm.reset(); 
+                fetchRecords(); 
+            } catch (error) {
+                console.error('Error creating record:', error);
+                alert('Error creating record.');
+            }
+        });
+
+        // Initial fetch of records when the page loads
+        fetchRecords();
+    </script>
+</body>
+</html>
